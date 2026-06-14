@@ -185,7 +185,10 @@ function App(){
   const [pwInput, setPwInput] = useState("");
   const [pwError, setPwError] = useState(false);
 
-  if(!authed) return(
+  const urlParams = new URLSearchParams(window.location.search);
+  const peladaParam2 = urlParams.get("pelada");
+
+  if(!authed && !peladaParam2) return(
     <div style={{minHeight:"100vh",background:"#0a120b",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"'Inter','Segoe UI',sans-serif"}}>
       <div style={{fontSize:56,marginBottom:12}}>⚽</div>
       <div style={{color:"#4ade80",fontWeight:900,fontSize:24,marginBottom:4}}>PELADA PRO</div>
