@@ -1,12 +1,592 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Pelada Pro</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Pelada Pro</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a120b; }
+    input[type=range] { width: 100%; accent-color: #4ade80; }
+    select { cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-presets="react">
+const { useState, useMemo, useEffect } = React;
+
+
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBM4Rlt_msr-CWPYlmXidcUraghjh1Rybg",
+  authDomain: "pelada-toque-de-classe.firebaseapp.com",
+  databaseURL: "https://pelada-toque-de-classe-default-rtdb.firebaseio.com",
+  projectId: "pelada-toque-de-classe",
+  storageBucket: "pelada-toque-de-classe.appspot.com",
+  messagingSenderId: "706405500858",
+  appId: "1:706405500858:web:d3ef6d250dbcd7c857ff83",
+};
+
+let db = null, fbRef = null, fbSet = null, fbGet = null, fbUpdate = null;
+
+async function initFirebase() {
+  if (db) return true;
+  try {
+    const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
+    const { getDatabase, ref, set, get, update } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js");
+    const app = getApps().length ? getApps()[0] : initializeApp(FIREBASE_CONFIG);
+    db = getDatabase(app);
+    fbRef = ref; fbSet = set; fbGet = get; fbUpdate = update;
+    return true;
+  } catch (e) { return false; }
+}
+
+const INIT_PLAYERS = [
+  {id:"pi1",name:"Weyber",rating:7.0,attendance:[1]},
+  {id:"pi2",name:"Marão",rating:7.0,attendance:[1]},
+  {id:"pi3",name:"Bruninho",rating:7.0,attendance:[1]},
+  {id:"pi4",name:"Thiago",rating:7.0,attendance:[1]},
+  {id:"pi5",name:"Daniel B.",rating:7.0,attendance:[1]},
+  {id:"pi6",name:"Landerson",rating:7.0,attendance:[1]},
+  {id:"pi7",name:"Edinha",rating:7.0,attendance:[1]},
+  {id:"pi8",name:"Maicon Show",rating:7.0,attendance:[1]},
+  {id:"pi9",name:"Marcelão",rating:7.0,attendance:[1]},
+  {id:"pi10",name:"Júnior Veloso",rating:7.0,attendance:[1]},
+  {id:"pi11",name:"João Ernani",rating:7.0,attendance:[1]},
+  {id:"pi12",name:"Miguel",rating:7.0,attendance:[1]},
+  {id:"pi13",name:"Matheus R",rating:7.0,attendance:[1]},
+  {id:"pi14",name:"Farley Santos",rating:7.0,attendance:[1]},
+  {id:"pi15",name:"Maurício",rating:7.0,attendance:[1]},
+  {id:"pi16",name:"Paulinho",rating:7.0,attendance:[1]},
+  {id:"pi17",name:"Léozinho",rating:7.0,attendance:[1]},
+  {id:"pi18",name:"Bel",rating:7.0,attendance:[1]},
+  {id:"pi19",name:"Sena",rating:7.0,attendance:[1]},
+  {id:"pi20",name:"Ney",rating:7.0,attendance:[1]},
+  {id:"pi21",name:"Paulinho Ph",rating:7.0,attendance:[1]},
+  {id:"pi22",name:"Bruno",rating:7.0,attendance:[1]},
+  {id:"pi23",name:"Mexicano",rating:7.0,attendance:[1]},
+  {id:"pi24",name:"Batgol10",rating:7.0,attendance:[1]},
+  {id:"pi25",name:"Eder",rating:7.0,attendance:[1]},
+  {id:"pi26",name:"Novo Delfino",rating:7.0,attendance:[1]},
+  {id:"pi27",name:"Vinicius Lima",rating:7.0,attendance:[1]},
+  {id:"pi28",name:"Luccas",rating:7.0,attendance:[1]},
+  {id:"pi29",name:"Dênisson",rating:7.0,attendance:[1]},
+  {id:"pi30",name:"Anderson Silva",rating:7.0,attendance:[1]},
+];
+
+const attRate = (a) => !a||!a.length ? 0 : Math.round(a.filter(Boolean).length/a.length*100);
+const rColor = (r) => r>=8.5?"#4ade80":r>=7?"#facc15":"#f87171";
+const aColor = (p) => p>=80?"#4ade80":p>=50?"#facc15":"#f87171";
+
+// ---- VOTING PAGE ----
+function VotingPage({pelada,voter}) {
+  const [votes,setVotes]=useState({});
+  const [submitted,setSubmitted]=useState(false);
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState("");
+  const presentes=pelada.players.filter(p=>pelada.presentIds.includes(p.id));
+  const outros=presentes.filter(p=>p.name.toLowerCase()!==voter.toLowerCase());
+  const timeLeft=pelada.closesAt?Math.max(0,Math.round((pelada.closesAt-Date.now())/3600000)):null;
+
+  async function submit(){
+    if(Object.keys(votes).length<outros.length){setErr(`Vote em todos os ${outros.length} jogadores.`);return;}
+    setSaving(true);
+    try{
+      const ok=await initFirebase(); if(!ok) throw new Error();
+      const u={};
+      for(const [pid,n] of Object.entries(votes)) u[`peladas/${pelada.id}/players/${pid}/votes/${voter}`]=n;
+      await fbUpdate(fbRef(db,"/"),u);
+      setSubmitted(true);
+    }catch{setErr("Erro ao salvar. Tente novamente.");}
+    finally{setSaving(false);}
+  }
+
+  if(submitted) return(
+    <div style={{minHeight:"100vh",background:"#0a120b",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"sans-serif"}}>
+      <div style={{fontSize:60,marginBottom:16}}>⚽</div>
+      <div style={{color:"#4ade80",fontWeight:900,fontSize:26,marginBottom:8}}>Votos enviados!</div>
+      <div style={{color:"#4a7a50",fontSize:14}}>Obrigado, {voter}!</div>
+    </div>
+  );
+
+  return(
+    <div style={{minHeight:"100vh",background:"#0a120b",color:"#e8f5e9",fontFamily:"'Inter','Segoe UI',sans-serif"}}>
+      <div style={{background:"linear-gradient(90deg,#0f2011,#162018)",padding:"16px 20px",borderBottom:"2px solid #1e3822"}}>
+        <div style={{fontSize:20,fontWeight:900,color:"#4ade80"}}>⚽ PELADA PRO — Votação</div>
+        <div style={{color:"#4a7a50",fontSize:12}}>
+          Votando como: <b style={{color:"#e8f5e9"}}>{voter}</b>
+          {timeLeft!==null&&<span style={{marginLeft:12}}>⏱ Fecha em ~{timeLeft}h</span>}
+        </div>
+      </div>
+      <div style={{padding:16}}>
+        <div style={{color:"#4a7a50",fontSize:12,marginBottom:16}}>Avalie a atuação dos colegas de hoje (1–10).</div>
+        {outros.map(p=>(
+          <div key={p.id} style={{background:"#162018",borderRadius:12,padding:"14px 16px",marginBottom:10,border:"1px solid #1e3822"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <span style={{fontWeight:700,fontSize:16}}>{p.name}</span>
+              {votes[p.id]&&<span style={{color:rColor(votes[p.id]),fontWeight:900,fontSize:22}}>{votes[p.id]}</span>}
+            </div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {[1,2,3,4,5,6,7,8,9,10].map(n=>(
+                <button key={n} onClick={()=>setVotes(v=>({...v,[p.id]:n}))} style={{
+                  width:38,height:38,borderRadius:8,border:votes[p.id]===n?"none":"1px solid #2d4a32",cursor:"pointer",
+                  background:votes[p.id]===n?rColor(n):"#0f1a10",
+                  color:votes[p.id]===n?"#0f1f12":"#4a7a50",fontWeight:800,fontSize:15,transition:"all 0.15s",
+                }}>{n}</button>
+              ))}
+            </div>
+          </div>
+        ))}
+        {err&&<div style={{color:"#f87171",fontSize:13,marginBottom:10}}>{err}</div>}
+        <button onClick={submit} disabled={saving} style={{width:"100%",background:saving?"#14532d":"#16a34a",color:"#fff",border:"none",borderRadius:12,padding:14,fontWeight:900,fontSize:16,cursor:"pointer"}}>
+          {saving?"Enviando...":"✓ Enviar Votos"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function VotingEntry({pelada}){
+  const [name,setName]=useState("");
+  const [voter,setVoter]=useState(null);
+  const [err,setErr]=useState("");
+  if(voter) return <VotingPage pelada={pelada} voter={voter}/>;
+  const presentes=pelada.players.filter(p=>pelada.presentIds.includes(p.id));
+  function enter(){
+    const m=presentes.find(p=>p.name.toLowerCase()===name.trim().toLowerCase());
+    if(!m){setErr("Apelido não encontrado entre os presentes de hoje.");return;}
+    if(pelada.closesAt&&Date.now()>pelada.closesAt){setErr("A votação já foi encerrada.");return;}
+    setVoter(m.name);
+  }
+  return(
+    <div style={{minHeight:"100vh",background:"#0a120b",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"'Inter','Segoe UI',sans-serif"}}>
+      <div style={{fontSize:56,marginBottom:12}}>⚽</div>
+      <div style={{color:"#4ade80",fontWeight:900,fontSize:24,marginBottom:4}}>PELADA PRO</div>
+      <div style={{color:"#4a7a50",fontSize:13,marginBottom:32}}>Vote na atuação dos seus colegas</div>
+      <div style={{width:"100%",maxWidth:340}}>
+        <div style={{color:"#e8f5e9",fontSize:14,fontWeight:600,marginBottom:8}}>Digite seu apelido:</div>
+        <input placeholder="Ex: Bruninho" value={name} onChange={e=>{setName(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&enter()}
+          style={{width:"100%",background:"#162018",border:"2px solid #2d4a32",borderRadius:10,padding:"12px 14px",color:"#e8f5e9",fontSize:16,boxSizing:"border-box",marginBottom:10,outline:"none"}}/>
+        {err&&<div style={{color:"#f87171",fontSize:12,marginBottom:10}}>{err}</div>}
+        <button onClick={enter} style={{width:"100%",background:"#16a34a",color:"#fff",border:"none",borderRadius:10,padding:13,fontWeight:800,fontSize:15,cursor:"pointer"}}>Entrar →</button>
+      </div>
+    </div>
+  );
+}
+
+// ---- MAIN APP ----
+function App(){
+  const [view,setView]=useState("players");
+  const [players,setPlayers]=useState(()=>{
+    try{
+      const s=localStorage.getItem('pelada_players');
+      const parsed=s?JSON.parse(s):[];
+      return parsed.length>0?parsed:INIT_PLAYERS;
+    }catch{ return INIT_PLAYERS; }
+  });
+  const [teamA,setTeamA]=useState([]);
+  const [teamB,setTeamB]=useState([]);
+  const [lastAddedTo,setLastAddedTo]=useState(null);
+  const [lastAdded,setLastAdded]=useState(null);
+  const [sortBy,setSortBy]=useState("name");
+  const [newP,setNewP]=useState({name:"",rating:7});
+  const [presentIds,setPresentIds]=useState([]);
+  const [horasVot,setHorasVot]=useState(24);
+  const [votingUrl,setVotingUrl]=useState("");
+  const [fbStatus,setFbStatus]=useState("idle");
+  const [activePeladaId,setActivePeladaId]=useState(null);
+  const [loadedPelada,setLoadedPelada]=useState(null);
+  const [evaluating,setEvaluating]=useState(null);
+  const [newRating,setNewRating]=useState(7);
+  const [showModal,setShowModal]=useState(false);
+
+  const params=new URLSearchParams(window.location.search);
+  const peladaParam=params.get("pelada");
+
+  useEffect(()=>{
+    if(peladaParam) loadPelada(peladaParam);
+  },[peladaParam]);
+
+  useEffect(()=>{
+    try{ localStorage.setItem('pelada_players', JSON.stringify(players)); }catch{}
+  },[players]);
+
+  async function loadPelada(id){
+    const ok=await initFirebase(); if(!ok) return;
+    const snap=await fbGet(fbRef(db,`peladas/${id}`));
+    if(snap.exists()) setLoadedPelada({id,...snap.val()});
+  }
+
+  if(peladaParam&&!loadedPelada) return(
+    <div style={{minHeight:"100vh",background:"#0a120b",display:"flex",alignItems:"center",justifyContent:"center",color:"#4ade80",fontFamily:"sans-serif",fontSize:18}}>
+      Carregando pelada...
+    </div>
+  );
+  if(peladaParam&&loadedPelada) return <VotingEntry pelada={loadedPelada}/>;
+
+  const allInTeams=[...teamA,...teamB].map(p=>p.id);
+
+  const available=useMemo(()=>players
+    .filter(p=>!allInTeams.includes(p.id))
+    .sort((a,b)=>a.name.localeCompare(b.name))
+  ,[players,allInTeams]);
+
+  const sortedAll=useMemo(()=>[...players].sort((a,b)=>{
+    if(sortBy==="rating") return b.rating-a.rating;
+    if(sortBy==="attendance") return attRate(b.attendance)-attRate(a.attendance);
+    return a.name.localeCompare(b.name);
+  }),[players,sortBy]);
+
+  const suggestions=useMemo(()=>{
+    if(!lastAdded||!lastAddedTo) return [];
+    return available
+      .sort((a,b)=>Math.abs(a.rating-lastAdded.rating)-Math.abs(b.rating-lastAdded.rating))
+      .slice(0,2);
+  },[lastAdded,lastAddedTo,available]);
+
+  const suggIds=suggestions.map(p=>p.id);
+
+  function addToTeam(player,team){
+    if(team==="A") setTeamA(prev=>[...prev,player]);
+    else setTeamB(prev=>[...prev,player]);
+    setLastAddedTo(team); setLastAdded(player);
+  }
+  function clickPlayer(player){
+    const avgA=teamA.length?teamA.reduce((s,p)=>s+p.rating,0)/teamA.length:0;
+    const avgB=teamB.length?teamB.reduce((s,p)=>s+p.rating,0)/teamB.length:0;
+    addToTeam(player,avgA<=avgB?"A":"B");
+  }
+  function removeFromTeam(player,team){
+    if(team==="A") setTeamA(prev=>prev.filter(p=>p.id!==player.id));
+    else setTeamB(prev=>prev.filter(p=>p.id!==player.id));
+    setLastAdded(null); setLastAddedTo(null);
+  }
+  function togglePresent(pid){
+    setPresentIds(prev=>prev.includes(pid)?prev.filter(id=>id!==pid):[...prev,pid]);
+  }
+
+  async function abrirVotacao(){
+    setFbStatus("connecting");
+    const ok=await initFirebase();
+    if(!ok){setFbStatus("error");return;}
+    const id="pelada_"+Date.now();
+    const closesAt=Date.now()+horasVot*3600000;
+    const data={id,createdAt:Date.now(),closesAt,presentIds,
+      players:players.map(({id,name,rating,attendance})=>({id,name,rating,attendance,votes:{}})),
+      teamA:teamA.map(p=>p.id),teamB:teamB.map(p=>p.id)};
+    await fbSet(fbRef(db,`peladas/${id}`),data);
+    setActivePeladaId(id);
+    const url=`${window.location.origin}${window.location.pathname}?pelada=${id}`;
+    setVotingUrl(url);
+    setFbStatus("ok");
+  }
+
+  async function sincronizar(){
+    if(!activePeladaId) return;
+    const ok=await initFirebase(); if(!ok) return;
+    const snap=await fbGet(fbRef(db,`peladas/${activePeladaId}/players`));
+    if(!snap.exists()) return;
+    const fbPs=snap.val();
+    setPlayers(prev=>prev.map(p=>{
+      const fbP=Object.values(fbPs).find(fp=>fp.id===p.id);
+      if(!fbP||!fbP.votes||!Object.keys(fbP.votes).length) return p;
+      const votos=Object.values(fbP.votes);
+      const media=votos.reduce((s,v)=>s+v,0)/votos.length;
+      return {...p,rating:Math.round(((p.rating*4+media)/5)*10)/10};
+    }));
+    alert("Votos sincronizados! Notas atualizadas.");
+  }
+
+  function gerarWhatsApp(){
+    const avgA=teamA.length?(teamA.reduce((s,p)=>s+p.rating,0)/teamA.length).toFixed(1):"?";
+    const avgB=teamB.length?(teamB.reduce((s,p)=>s+p.rating,0)/teamB.length).toFixed(1):"?";
+    const top=[...players].sort((a,b)=>b.rating-a.rating)[0];
+    let msg=`⚽ *PELADA DE HOJE*\n\n🟢 *TIME A* (média ${avgA})\n`;
+    teamA.forEach(p=>msg+=`  ${p.name} (${p.rating.toFixed(1)})\n`);
+    msg+=`\n🔵 *TIME B* (média ${avgB})\n`;
+    teamB.forEach(p=>msg+=`  ${p.name} (${p.rating.toFixed(1)})\n`);
+    if(top) msg+=`\n⭐ *Destaque:* ${top.name} (${top.rating.toFixed(1)})\n`;
+    if(votingUrl) msg+=`\n📊 *Vote na atuação:*\n${votingUrl}`;
+    navigator.clipboard?.writeText(msg);
+    alert("Resumo copiado! Cole no grupo.");
+  }
+
+  function saveRating(){
+    setPlayers(prev=>prev.map(p=>{
+      if(p.id!==evaluating) return p;
+      const att=[...(p.attendance||[]).slice(-4),1];
+      const avg=Math.round(((p.rating*4+newRating)/5)*10)/10;
+      return {...p,rating:avg,attendance:att};
+    }));
+    setShowModal(false); setEvaluating(null);
+  }
+
+  function TeamPanel({team,name,color,onRemove}){
+    const avg=team.length?(team.reduce((s,p)=>s+p.rating,0)/team.length).toFixed(1):"—";
+    return(
+      <div style={{background:"#0f1a10",borderRadius:14,padding:12,flex:1,border:`2px solid ${color}22`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <span style={{color,fontWeight:800,fontSize:14}}>⚽ {name}</span>
+          <span style={{background:`${color}22`,color,fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:20}}>Média {avg}</span>
+        </div>
+        {!team.length&&<div style={{color:"#2d4a32",textAlign:"center",fontSize:12,padding:12}}>Nenhum jogador</div>}
+        {team.map(p=>(
+          <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#162018",borderRadius:8,padding:"7px 10px",marginBottom:5,border:`1px solid ${color}33`}}>
+            <span style={{color:"#e8f5e9",fontWeight:600,fontSize:13}}>{p.name}</span>
+            <div style={{display:"flex",alignItems:"center",gap:7}}>
+              <span style={{color:rColor(p.rating),fontWeight:800}}>{p.rating.toFixed(1)}</span>
+              <button onClick={()=>onRemove(p)} style={{background:"none",border:"none",color:"#4a7a50",cursor:"pointer",fontSize:16}}>×</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const navItems=[
+    {key:"players",label:"Elenco",icon:"👤"},
+    {key:"teams",label:"Times",icon:"⚽"},
+    {key:"attend",label:"Chamada",icon:"📋"},
+    {key:"voting",label:"Votação",icon:"📊"},
+  ];
+
+  return(
+    <div style={{minHeight:"100vh",background:"#0a120b",color:"#e8f5e9",fontFamily:"'Inter','Segoe UI',sans-serif",display:"flex",flexDirection:"column"}}>
+      <div style={{background:"linear-gradient(90deg,#0f2011,#162018)",padding:"14px 20px 10px",borderBottom:"2px solid #1e3822",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div>
+          <div style={{fontSize:20,fontWeight:900,color:"#4ade80",letterSpacing:-0.5}}>⚽ PELADA PRO</div>
+          <div style={{fontSize:10,color:"#4a7a50",letterSpacing:2,textTransform:"uppercase"}}>Gestão & Votação</div>
+        </div>
+        <div style={{background:"#162018",borderRadius:10,padding:"5px 12px",border:"1px solid #2d4a32",textAlign:"center"}}>
+          <div style={{fontSize:18,fontWeight:900,color:"#4ade80"}}>{players.length}</div>
+          <div style={{fontSize:9,color:"#4a7a50",textTransform:"uppercase",letterSpacing:1}}>atletas</div>
+        </div>
+      </div>
+
+      <div style={{display:"flex",background:"#0f1a10",borderBottom:"1px solid #1e3822"}}>
+        {navItems.map(item=>(
+          <button key={item.key} onClick={()=>setView(item.key)} style={{
+            flex:1,padding:"10px 4px",border:"none",cursor:"pointer",
+            background:view===item.key?"#162018":"transparent",
+            color:view===item.key?"#4ade80":"#4a7a50",fontWeight:700,fontSize:11,
+            borderBottom:view===item.key?"2px solid #4ade80":"2px solid transparent",
+            display:"flex",flexDirection:"column",alignItems:"center",gap:2,transition:"all 0.15s",
+          }}>
+            <span style={{fontSize:17}}>{item.icon}</span>{item.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{flex:1,padding:16,overflowY:"auto"}}>
+
+        {/* ELENCO */}
+        {view==="players"&&(
+          <>
+            <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+              <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{background:"#162018",color:"#4ade80",border:"1px solid #2d4a32",borderRadius:8,padding:"6px 10px",fontSize:12,cursor:"pointer"}}>
+                <option value="name">A–Z</option>
+                <option value="rating">↓ Nota</option>
+                <option value="attendance">↓ Assiduidade</option>
+              </select>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              {sortedAll.map(p=>{
+                const att=attRate(p.attendance);
+                return(
+                  <div key={p.id} style={{background:"#162018",borderRadius:12,padding:"12px 14px",border:"1px solid #1e3822"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <span style={{color:"#e8f5e9",fontWeight:700,fontSize:15}}>{p.name}</span>
+                      <span style={{color:rColor(p.rating),fontWeight:900,fontSize:20}}>{p.rating.toFixed(1)}</span>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                      <div style={{flex:1,height:4,background:"#0f1f12",borderRadius:2}}>
+                        <div style={{width:`${att}%`,height:"100%",background:aColor(att),borderRadius:2}}/>
+                      </div>
+                      <span style={{color:aColor(att),fontSize:11,fontWeight:700}}>{att}%</span>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                      <div style={{display:"flex",gap:3}}>
+                        {(p.attendance||[]).slice(-5).map((a,i)=>(
+                          <div key={i} style={{width:10,height:10,borderRadius:"50%",background:a?"#4ade80":"#ef4444"}}/>
+                        ))}
+                      </div>
+                      <button onClick={()=>setPlayers(prev=>prev.filter(x=>x.id!==p.id))}
+                        style={{background:"none",border:"none",color:"#4a7a50",cursor:"pointer",fontSize:16,padding:"2px 4px"}}>🗑</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{marginTop:20,background:"#162018",borderRadius:14,padding:16,border:"1px solid #2d4a32"}}>
+              <div style={{color:"#4ade80",fontWeight:800,fontSize:14,marginBottom:12}}>+ Novo Jogador</div>
+              <input placeholder="Apelido" value={newP.name} onChange={e=>setNewP(p=>({...p,name:e.target.value}))}
+                style={{width:"100%",background:"#0f1a10",border:"1px solid #2d4a32",borderRadius:8,padding:"10px 12px",color:"#e8f5e9",fontSize:14,marginBottom:10,boxSizing:"border-box"}}/>
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:12,color:"#4a7a50",marginBottom:6}}>Nota inicial: <span style={{color:"#4ade80",fontWeight:800}}>{newP.rating}</span></div>
+                <input type="range" min={1} max={10} step={0.5} value={newP.rating} onChange={e=>setNewP(p=>({...p,rating:parseFloat(e.target.value)}))} style={{width:"100%"}}/>
+                <div style={{display:"flex",justifyContent:"space-between",color:"#4a7a50",fontSize:10}}>
+                  <span>1 — Ruim</span><span>10 — Excelente</span>
+                </div>
+              </div>
+              <button onClick={()=>{if(!newP.name.trim())return;setPlayers(prev=>[...prev,{id:"p_"+Date.now(),name:newP.name.trim(),rating:newP.rating,attendance:[1]}]);setNewP({name:"",rating:7});}}
+                style={{width:"100%",background:"#16a34a",color:"#fff",border:"none",borderRadius:10,padding:12,fontWeight:800,fontSize:15,cursor:"pointer"}}>Cadastrar</button>
+            </div>
+          </>
+        )}
+
+        {/* TIMES */}
+        {view==="teams"&&(
+          <>
+            {suggestions.length>0&&(
+              <div style={{background:"#0f1e2b",borderRadius:10,padding:"10px 14px",border:"1px solid #1d4ed8",marginBottom:12}}>
+                <div style={{color:"#60a5fa",fontSize:11,fontWeight:700,marginBottom:8}}>💡 Para equilibrar o Time {lastAddedTo==="A"?"B":"A"}:</div>
+                <div style={{display:"flex",gap:8}}>
+                  {suggestions.map(p=>(
+                    <button key={p.id} onClick={()=>addToTeam(p,lastAddedTo==="A"?"B":"A")} style={{flex:1,background:"#1e3a5f",border:"2px solid #3b82f6",borderRadius:8,padding:"10px 6px",cursor:"pointer",textAlign:"center"}}>
+                      <div style={{color:"#e8f5e9",fontWeight:700,fontSize:13,marginBottom:4}}>{p.name}</div>
+                      <div style={{color:"#4ade80",fontWeight:900,fontSize:18}}>{p.rating.toFixed(1)}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div style={{display:"flex",gap:10,marginBottom:14}}>
+              <TeamPanel team={teamA} name="Time A" color="#4ade80" onRemove={p=>removeFromTeam(p,"A")}/>
+              <TeamPanel team={teamB} name="Time B" color="#60a5fa" onRemove={p=>removeFromTeam(p,"B")}/>
+            </div>
+            <div style={{color:"#4a7a50",fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>Disponíveis ({available.length})</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              {available.map(p=>(
+                <div key={p.id} onClick={()=>clickPlayer(p)} style={{
+                  background:suggIds.includes(p.id)?"linear-gradient(135deg,#1e3a5f,#1d4ed8)":"#162018",
+                  border:suggIds.includes(p.id)?"2px solid #60a5fa":"2px solid transparent",
+                  borderRadius:12,padding:"12px 14px",cursor:"pointer",transition:"all 0.2s",
+                  transform:suggIds.includes(p.id)?"scale(1.03)":"scale(1)",
+                  display:"flex",justifyContent:"space-between",alignItems:"center",
+                }}>
+                  <span style={{color:"#e8f5e9",fontWeight:700,fontSize:14}}>{p.name}</span>
+                  <span style={{color:rColor(p.rating),fontWeight:900,fontSize:18}}>{p.rating.toFixed(1)}</span>
+                </div>
+              ))}
+            </div>
+            {allInTeams.length>0&&(
+              <button onClick={()=>{setTeamA([]);setTeamB([]);setLastAdded(null);setLastAddedTo(null);}} style={{marginTop:14,width:"100%",background:"#1f2d21",border:"1px solid #2d4a32",borderRadius:10,padding:12,color:"#f87171",fontWeight:700,cursor:"pointer"}}>
+                🔄 Limpar Times
+              </button>
+            )}
+          </>
+        )}
+
+        {/* CHAMADA */}
+        {view==="attend"&&(
+          <>
+            <div style={{color:"#4a7a50",fontSize:12,marginBottom:14}}>Marque os presentes e avalie a atuação de hoje.</div>
+            {players.map(p=>{
+              const att=attRate(p.attendance);
+              const present=presentIds.includes(p.id);
+              return(
+                <div key={p.id} style={{background:present?"#0f2011":"#162018",borderRadius:12,padding:"12px 14px",border:present?"1px solid #16a34a":"1px solid #1e3822",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{flex:1}}>
+                    <div style={{color:"#e8f5e9",fontWeight:700,fontSize:14,marginBottom:4}}>{p.name}</div>
+                    <div style={{display:"flex",gap:8}}>
+                      <span style={{color:"#4a7a50",fontSize:11}}>Nota: <span style={{color:rColor(p.rating),fontWeight:800}}>{p.rating.toFixed(1)}</span></span>
+                      <span style={{color:aColor(att),fontSize:11,fontWeight:700}}>{att}%</span>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={()=>togglePresent(p.id)} style={{background:present?"#16a34a":"#162018",color:present?"#fff":"#4a7a50",border:present?"none":"1px solid #2d4a32",borderRadius:8,padding:"7px 10px",cursor:"pointer",fontSize:13,fontWeight:800}}>
+                      {present?"✓":"—"}
+                    </button>
+                    <button onClick={()=>{setEvaluating(p.id);setNewRating(Math.round(p.rating));setShowModal(true);}} style={{background:"#14532d",color:"#4ade80",border:"1px solid #16a34a",borderRadius:8,padding:"7px 10px",cursor:"pointer",fontSize:13}}>⭐</button>
+                    <button onClick={()=>setPlayers(prev=>prev.map(x=>x.id!==p.id?x:{...x,attendance:[...(x.attendance||[]).slice(-4),0]}))} style={{background:"#3b0f0f",color:"#f87171",border:"1px solid #7f1d1d",borderRadius:8,padding:"7px 10px",cursor:"pointer",fontSize:13}}>✗</button>
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{marginTop:12,background:"#162018",borderRadius:10,padding:12,border:"1px solid #2d4a32"}}>
+              <div style={{color:"#4ade80",fontSize:13,fontWeight:700}}>✓ {presentIds.length} presentes de {players.length}</div>
+            </div>
+          </>
+        )}
+
+        {/* VOTAÇÃO */}
+        {view==="voting"&&(
+          <>
+            {presentIds.length===0&&(
+              <div style={{background:"#1f1600",border:"1px solid #713f12",borderRadius:10,padding:12,color:"#fbbf24",fontSize:13,marginBottom:14}}>
+                ⚠️ Faça a chamada primeiro (aba 📋) para marcar quem está presente.
+              </div>
+            )}
+            {!votingUrl?(
+              <div style={{background:"#162018",borderRadius:14,padding:16,border:"1px solid #2d4a32"}}>
+                <div style={{color:"#4ade80",fontWeight:800,fontSize:16,marginBottom:4}}>Abrir Votação</div>
+                <div style={{color:"#4a7a50",fontSize:12,marginBottom:16}}>Só os {presentIds.length} presentes marcados poderão votar.</div>
+                <div style={{marginBottom:16}}>
+                  <div style={{color:"#e8f5e9",fontSize:13,marginBottom:8}}>Fechar em: <span style={{color:"#4ade80",fontWeight:800}}>{horasVot}h</span></div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    {[2,6,12,24,48].map(h=>(
+                      <button key={h} onClick={()=>setHorasVot(h)} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",background:horasVot===h?"#4ade80":"#0f1a10",color:horasVot===h?"#0f1f12":"#4a7a50",fontWeight:700,fontSize:13}}>{h}h</button>
+                    ))}
+                  </div>
+                </div>
+                <button onClick={abrirVotacao} disabled={fbStatus==="connecting"||presentIds.length===0} style={{width:"100%",background:presentIds.length===0?"#1f2d21":"#16a34a",color:presentIds.length===0?"#4a7a50":"#fff",border:"none",borderRadius:10,padding:13,fontWeight:800,fontSize:15,cursor:presentIds.length===0?"not-allowed":"pointer"}}>
+                  {fbStatus==="connecting"?"Criando link...":"🔗 Gerar Link de Votação"}
+                </button>
+                {fbStatus==="error"&&<div style={{color:"#f87171",fontSize:12,marginTop:10}}>Erro ao conectar. Configure o Firebase no código.</div>}
+              </div>
+            ):(
+              <>
+                <div style={{background:"#0f2011",borderRadius:14,padding:16,border:"2px solid #16a34a",marginBottom:14}}>
+                  <div style={{color:"#4ade80",fontWeight:800,fontSize:15,marginBottom:8}}>✓ Votação Aberta!</div>
+                  <div style={{color:"#4a7a50",fontSize:11,marginBottom:8}}>Mande este link no grupo:</div>
+                  <div style={{background:"#0a120b",borderRadius:8,padding:"10px 12px",color:"#e8f5e9",fontSize:12,wordBreak:"break-all",marginBottom:10,border:"1px solid #2d4a32"}}>{votingUrl}</div>
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={()=>navigator.clipboard?.writeText(votingUrl)} style={{flex:1,background:"#162018",color:"#4ade80",border:"1px solid #16a34a",borderRadius:8,padding:10,cursor:"pointer",fontWeight:700,fontSize:13}}>📋 Copiar Link</button>
+                    <button onClick={gerarWhatsApp} style={{flex:1,background:"#14532d",color:"#4ade80",border:"1px solid #16a34a",borderRadius:8,padding:10,cursor:"pointer",fontWeight:700,fontSize:13}}>📲 WhatsApp</button>
+                  </div>
+                </div>
+                <button onClick={sincronizar} style={{width:"100%",background:"#1e3a5f",color:"#60a5fa",border:"2px solid #1d4ed8",borderRadius:10,padding:13,fontWeight:800,fontSize:15,cursor:"pointer"}}>
+                  🔄 Sincronizar Votos Agora
+                </button>
+                <div style={{color:"#4a7a50",fontSize:11,textAlign:"center",marginTop:8}}>Clique para buscar os votos e atualizar as notas</div>
+              </>
+            )}
+            {(teamA.length>0||teamB.length>0)&&!votingUrl&&(
+              <button onClick={gerarWhatsApp} style={{width:"100%",marginTop:14,background:"#162018",color:"#4ade80",border:"1px solid #2d4a32",borderRadius:10,padding:12,fontWeight:700,fontSize:14,cursor:"pointer"}}>
+                📲 Copiar Resumo (sem votação)
+              </button>
+            )}
+          </>
+        )}
+      </div>
+
+      {showModal&&(
+        <div style={{position:"fixed",inset:0,background:"#000a",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
+          <div style={{background:"#162018",borderRadius:16,padding:24,border:"2px solid #2d4a32",width:"90%",maxWidth:360}}>
+            <div style={{color:"#4ade80",fontWeight:800,fontSize:18,marginBottom:4}}>Avaliar Pelada de Hoje</div>
+            <div style={{color:"#4a7a50",fontSize:13,marginBottom:16}}>{players.find(p=>p.id===evaluating)?.name}</div>
+            <div style={{marginBottom:20}}>
+              <div style={{color:"#e8f5e9",fontSize:12,marginBottom:10}}>Nota: <span style={{color:"#4ade80",fontWeight:900,fontSize:26}}>{newRating}</span></div>
+              <input type="range" min={1} max={10} step={0.5} value={newRating} onChange={e=>setNewRating(parseFloat(e.target.value))} style={{width:"100%"}}/>
+              <div style={{display:"flex",justifyContent:"space-between",color:"#4a7a50",fontSize:10}}>
+                <span>1 — Ruim</span><span>10 — Excelente</span>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setShowModal(false)} style={{flex:1,background:"#0f1a10",color:"#4a7a50",border:"1px solid #2d4a32",borderRadius:10,padding:12,cursor:"pointer",fontWeight:700}}>Cancelar</button>
+              <button onClick={saveRating} style={{flex:2,background:"#16a34a",color:"#fff",border:"none",borderRadius:10,padding:12,cursor:"pointer",fontWeight:800,fontSize:15}}>✓ Salvar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+  </script>
+</body>
 </html>
