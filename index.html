@@ -904,7 +904,7 @@ function renderSquad() {
   // Group by position
   const groups = filterPos ? {[filterPos]:filtered} : {};
   if (!filterPos) {
-    for (const pos of ['GK','ZAG','LAT','MEI','ATA']) {
+    for (const pos of ['GK','ZAG','LAT','MEI-DE','MEI-OF','MEI','ATA']) {
       const g = filtered.filter(p=>p.position===pos);
       if (g.length) groups[pos]=g;
     }
@@ -913,7 +913,7 @@ function renderSquad() {
     if (others.length) groups['Outros']=others;
   }
 
-  const posName = {GK:'Goleiros',ZAG:'Zagueiros',LAT:'Laterais',MEI:'Meias',ATA:'Atacantes',Outros:'Outros'};
+  const posName = {GK:'Goleiros',ZAG:'Zagueiros',LAT:'Laterais','MEI-DE':'Meias Def.','MEI-OF':'Meias Of.',MEI:'Meias',ATA:'Atacantes',Outros:'Outros'};
   let html = '';
   for (const [pos, list] of Object.entries(groups)) {
     if (!filterPos) html += `<div class="position-section">
